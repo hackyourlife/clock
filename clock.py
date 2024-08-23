@@ -4,7 +4,7 @@
 import time
 import sys
 import curses
-from datetime import datetime
+from datetime import datetime, timedelta
 
 bigfont = True
 
@@ -193,7 +193,7 @@ def move(x, y):
 	write("\x1b[%d;%dH" % (y + 1, x + 1))
 
 def draw_block():
-	write("\x1b[47m \x1b[0m")
+	write("\x1b[7m \x1b[0m")
 
 def draw(c, x, y):
 	global WIDTH, SCALE, chars
@@ -220,24 +220,67 @@ def draw_string(s, x, y):
 		draw(c, x + (WIDTH * SCALE * i), y)
 	flush()
 
-def draw_time(size):
+last_time = None
+
+def draw_time(size, t=None):
 	global WIDTH
 	global HEIGHT
 	global SCALE
+	global last_time
+
 	w = 8 * WIDTH * SCALE
 	h = HEIGHT * SCALE
 	px = round((size[0] - w) / 2)
 	py = round((size[1] - h) / 2)
-	t = datetime.now()
-	h = t.hour
-	m = t.minute
-	s = t.second
+	if t is None:
+		t = datetime.now()
+
+	if type(t) == datetime:
+		h = t.hour
+		m = t.minute
+		s = t.second
+	else:
+		tmp = t
+		s = tmp % 60
+		tmp //= 60
+		m = tmp % 60
+		tmp //= 60
+		h = tmp
+
 	z = "%02d:%02d:%02d" % (h, m, s)
-	draw_string(z, px, py)
+
+	if last_time != z:
+		draw_string(z, px, py)
+	z = last_time
 
 def get_size():
 	width, height = curses.COLS, curses.LINES
 	return (width, height)
+
+def parse_time(arg):
+	hours = 0
+	minutes = 0
+	seconds = 0
+
+	state = 0
+	buffer = 0
+	for c in arg:
+		if c >= '0' and c <= '9':
+			buffer *= 10
+			buffer += ord(c) - 0x30
+		elif c == 'h':
+			hours = buffer
+			buffer = 0
+		elif c == 'm':
+			minutes = buffer
+			buffer = 0
+		elif c == 's':
+			seconds = buffer
+			buffer = 0
+	if buffer > 0:
+		seconds = buffer
+	return (hours, minutes, seconds)
+
 
 if __name__ == "__main__":
 	curses.initscr()
@@ -247,11 +290,23 @@ if __name__ == "__main__":
 	curses.noecho()
 	curses.curs_set(0)
 	clear()
+
 	try:
-		while True:
-			draw_time(size)
-			time.sleep(1)
+		if len(sys.argv) == 2:
+			timer = parse_time(sys.argv[1])
+			start = datetime.now()
+			end = start + timedelta(hours=timer[0],
+					minutes=timer[1], seconds=timer[2])
+			while datetime.now() < end:
+				remaining = end - datetime.now()
+				draw_time(size, remaining.total_seconds())
+				time.sleep(0.01)
+		else:
+			while True:
+				draw_time(size)
+				time.sleep(0.01)
 	except KeyboardInterrupt:
 		pass
+
 	curses.curs_set(1)
 	curses.endwin()
